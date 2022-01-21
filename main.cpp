@@ -5,6 +5,8 @@
 #include <fstream>
 #include "omp.h"
 
+#define OPENMP_SCHEDULE dynamic  
+
 using namespace std;
 
 // right side equation
@@ -21,17 +23,14 @@ float S(float x, float y){
  * @param M number of rows
  * @param h grid width
  * @return true When the tolerance is satisfied
- * @return false When the tolerance of the error isn't enough
  */
-bool jacobi(float* u_old, float* u_new, int N, int M, float h) {
-
-  float tol;        // tolerance
-  float sum = 0;    // sum of the differences between each term of the vectors
+void jacobi(float* u_old, float* u_new, int N, int M, float h) {
 
   float h2 = h*h;
 
   // calculate next approximation for the solution, which is basically the mean of it's neighbours
   // note that it doesn't iterate through the boundary
+  #pragma omp for collapse(1) // schedule (OPENMP_SCHEDULE)
   for (int j = 1; j < M - 1; j++) {
     for (int i = 1; i < N - 1; i++) {
       u_new[ j*N + i ] = ( 
@@ -43,22 +42,6 @@ bool jacobi(float* u_old, float* u_new, int N, int M, float h) {
       )/4;
     }
   }
-
-  // calculates the tolerance
-  for (int j = 1; j < M - 1; j++) {
-    for (int i = 1; i < N - 1; i++) {
-      sum += abs(u_new[j*N + i] - u_old[j*N + i]);
-    }
-  }
-  tol = (sum/((N - 2.0) * (M - 2.0)));
-  // cout << sum << endl;
-  // cout << tol << endl;
-
-  if (tol < .000001) {
-    return true;
-  }
-  return false;
-
 }
 
 void saveDataBin(float* u, int* N, int* M, float* h) {
@@ -109,14 +92,25 @@ int main(){
   int N = 400;           // number of columns
   int M = N;            // number of rows
   float h = 1.0/N;      // grid width
+
   int cont = 0;
+  float sum;
+  float tol = 10;
 
   int size = N * M;     // size of vector
 
-  bool solved = false;
-
   float* u_old = new float[size];
   float* u_new = new float[size];
+
+  // OpenMP config
+  int t = 1;
+#ifdef _OPENMP
+  omp_set_num_threads(1);
+  #pragma omp parallel
+  t = omp_get_num_threads();
+#endif
+
+  cout << "Threads: " << t << endl;
 
   // setting grid values to 0 initially
   memset(u_old, 0.0, size * sizeof(float));
@@ -129,21 +123,36 @@ int main(){
   }
 
   // solving by the jacobi method (exercise 1)
+  cout << "Executing jacobi...\n";
   auto inicio = chrono::high_resolution_clock::now();
-  while (!solved) {
 
-    // cout << "it: " << cont << endl;
-    cont += 2;
+  #pragma omp parallel 
+  {
+    for (cont = 0; tol > .000001; cont += 2) {
 
-    solved = jacobi(u_old, u_new, N, M, h);
-    solved = jacobi(u_new, u_old, N, M, h);
+      // calculates two next iterations
+      jacobi(u_old, u_new, N, M, h);
+      jacobi(u_new, u_old, N, M, h);
+
+      // calculates the tolerance
+      sum = 0;
+
+      for (int j = 1; j < M - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
+          sum += abs(u_new[j*N + i] - u_old[j*N + i]);
+        }
+      }
+
+      tol = (sum/((N - 2.0) * (M - 2.0)));
+
+    }
   }
 
   auto final = chrono::high_resolution_clock::now();
   chrono::duration<double> intervalo = final - inicio;
   cout << "\nTime spent (jacobi): " << intervalo.count() << "s\n";
-  cout << "\nIterations: " << cont << "\n";
-  cout << "\nu(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n";
+  cout << "Iterations: " << cont << "\n";
+  cout << "u(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n\n";
 
   cout << "Saving data...\n";
   // saving data for plotting
