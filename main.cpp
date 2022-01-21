@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <chrono>
 #include <iostream>
 #include <cstring>
 #include <fstream>
@@ -35,24 +36,23 @@ bool jacobi(float* u_old, float* u_new, int N, int M, float h) {
     for (int i = 1; i < N - 1; i++) {
       u_new[ j*N + i ] = ( 
         h2 * S (i*h, j*h) +
-        u_old[ j*N + (i - 1) ] 
-        + u_old[ j*N + (i + 1) ] 
-        + u_old[ (j - 1)*N + i ] 
-        + u_old[ (j + 1)*N + i ] 
+        u_old[ j*N + (i - 1) ] +
+        u_old[ j*N + (i + 1) ] +
+        u_old[ (j - 1)*N + i ] +
+        u_old[ (j + 1)*N + i ] 
       )/4;
     }
   }
 
   // calculates the tolerance
-  for (int j = 0; j < M; j++) {
-    for (int i = 0; i < N; i++) {
+  for (int j = 1; j < M - 1; j++) {
+    for (int i = 1; i < N - 1; i++) {
       sum += abs(u_new[j*N + i] - u_old[j*N + i]);
     }
   }
-  tol = (1.0/((N - 2.0) * (M - 2.0))) * sum;  
-  cout << sum << endl;
-  cout << tol << endl;
-  
+  tol = (sum/((N - 2.0) * (M - 2.0)));
+  // cout << sum << endl;
+  // cout << tol << endl;
 
   if (tol < .000001) {
     return true;
@@ -129,18 +129,27 @@ int main(){
   }
 
   // solving by the jacobi method (exercise 1)
-  while (!solved && cont < 10000) {
+  auto inicio = chrono::high_resolution_clock::now();
+  while (!solved) {
 
-    cout << "it: " << cont << endl;
+    // cout << "it: " << cont << endl;
     cont += 2;
 
     solved = jacobi(u_old, u_new, N, M, h);
     solved = jacobi(u_new, u_old, N, M, h);
   }
 
+  auto final = chrono::high_resolution_clock::now();
+  chrono::duration<double> intervalo = final - inicio;
+  cout << "\nTime spent (jacobi): " << intervalo.count() << "s\n";
+  cout << "\nIterations: " << cont << "\n";
+  cout << "\nu(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n";
+
+  cout << "Saving data...\n";
   // saving data for plotting
-  saveDataASCII(u_new, N, M, h);
-  saveDataBin(u_new, &N, &M, &h);
+  saveDataASCII(u_old, N, M, h);
+  saveDataBin(u_old, &N, &M, &h);
+  cout << "Data saved succesfully!\n";
 
   return 0;
 }
