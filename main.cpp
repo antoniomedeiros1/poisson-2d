@@ -94,7 +94,8 @@ int main(){
   float h = 1.0/N;      // grid width
 
   int cont = 0;
-  float sum;
+  float* sum;
+  float total = 0;
   float tol = 10;
 
   int size = N * M;     // size of vector
@@ -104,13 +105,16 @@ int main(){
 
   // OpenMP config
   int t = 1;
+
 #ifdef _OPENMP
-  omp_set_num_threads(1);
+  omp_set_num_threads(8);
   #pragma omp parallel
   t = omp_get_num_threads();
 #endif
 
   cout << "Threads: " << t << endl;
+
+  sum = new float[t];
 
   // setting grid values to 0 initially
   memset(u_old, 0.0, size * sizeof(float));
@@ -126,39 +130,52 @@ int main(){
   cout << "Executing jacobi...\n";
   auto inicio = chrono::high_resolution_clock::now();
 
-  #pragma omp parallel 
-  {
-    for (cont = 0; tol > .000001; cont += 2) {
+  // approximates the result until a tolerance is satisfied
+  for (cont = 0; tol > .000001; cont += 2) {
 
-      // calculates two next iterations
+    // reseting values
+    memset(sum, 0.0, t * sizeof(float));
+    total = 0;
+
+    // creating parallel region
+    #pragma omp parallel 
+    {
+      int id = omp_get_thread_num();
+    
+      // calculates the two next iterations
       jacobi(u_old, u_new, N, M, h);
       jacobi(u_new, u_old, N, M, h);
 
-      // calculates the tolerance
-      sum = 0;
-
+      #pragma omp for collapse(1)
       for (int j = 1; j < M - 1; j++) {
         for (int i = 1; i < N - 1; i++) {
-          sum += abs(u_new[j*N + i] - u_old[j*N + i]);
+          sum[id] += abs(u_new[j*N + i] - u_old[j*N + i]);
         }
       }
-
-      tol = (sum/((N - 2.0) * (M - 2.0)));
-
     }
+
+    // calculates tolerance
+    for (int i = 0; i < t; i++ ){
+      total += sum[i];
+    }
+    tol = (total/((N - 2.0) * (M - 2.0)));
+
   }
 
   auto final = chrono::high_resolution_clock::now();
   chrono::duration<double> intervalo = final - inicio;
+
   cout << "\nTime spent (jacobi): " << intervalo.count() << "s\n";
   cout << "Iterations: " << cont << "\n";
   cout << "u(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n\n";
 
-  cout << "Saving data...\n";
   // saving data for plotting
+  cout << "Saving data...\n";
   saveDataASCII(u_old, N, M, h);
   saveDataBin(u_old, &N, &M, &h);
   cout << "Data saved succesfully!\n";
+
+  // solving by the SOR red-black method (exercise 2)
 
   return 0;
 }
