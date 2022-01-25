@@ -22,14 +22,96 @@ float S(float x, float y){
  * @param N number of columns
  * @param M number of rows
  * @param h grid width
- * @return true When the tolerance is satisfied
+ * @param t number of threads
  */
-void jacobi(float* u_old, float* u_new, int N, int M, float h) {
+int jacobi(float* u_old, float* u_new, int N, int M, float h, int t) {
 
   float h2 = h*h;
+  float * erro = new float[t];
+  int cont;
+  float tol = 1;
 
-  // calculate next approximation for the solution, which is basically the mean of it's neighbours
-  // note that it doesn't iterate through the boundary
+  // approximates the result until a tolerance is satisfied
+  for (cont = 0; tol > .000001; cont += 2) {
+
+    // cout << cont << endl;
+    memset(erro, 0.0, t * sizeof(float));
+
+    // creating parallel region
+    #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+
+      // calculates u_new from u_old
+      #pragma omp for collapse(1) schedule (OPENMP_SCHEDULE)
+      for (int j = 1; j < M - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
+          u_new[ j*N + i ] = ( 
+            h2 * S (i*h, j*h) +
+            u_old[ j*N + (i - 1) ] +
+            u_old[ j*N + (i + 1) ] +
+            u_old[ (j - 1)*N + i ] +
+            u_old[ (j + 1)*N + i ] 
+          )/4;
+        }
+      }
+
+      // calculates u_old from u_new
+      #pragma omp for collapse(1) schedule (OPENMP_SCHEDULE)
+      for (int j = 1; j < M - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
+          u_old[ j*N + i ] = ( 
+            h2 * S (i*h, j*h) +
+            u_new[ j*N + (i - 1) ] +
+            u_new[ j*N + (i + 1) ] +
+            u_new[ (j - 1)*N + i ] +
+            u_new[ (j + 1)*N + i ] 
+          )/4;
+          // erro[id] += abs(u_new[ j*N + i ] - u_old[ j*N + i ]);
+        }
+      }
+
+      // calculating the error separetly providaded a better performance
+      #pragma omp for collapse(1) schedule (OPENMP_SCHEDULE)
+      for (int j = 1; j < M - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
+          erro[id] += abs(u_new[ j*N + i ] - u_old[ j*N + i ]);
+        }
+      }
+    }
+
+    // calculating the tolerance based on last two iterations
+    for (int i = 1; i < t; i++ ){
+      erro[0] += erro[i];
+    }
+    
+    tol = erro[0] / ( (N - 2) * (M - 2) );
+
+  }
+
+  return cont;
+
+}
+
+/**
+ * @brief Calculates next iteration of the linear system by the SOR Back-Red method
+ * 
+ * @param u_old current solution
+ * @param u_next next iteration solution
+ * @param N number of columns
+ * @param M number of rows
+ * @param h grid width
+ * @param w acceleration factor
+ * @return the tolerance
+ */
+float SOR_BR(float* u_old, float* u_new, int N, int M, float h) {
+
+  float h2 = h*h;
+  float erro = 0.0;
+
+  // calculate next approximation for the solution
+
+  // iterate through all elements such that i + j is odd
   #pragma omp for collapse(1) // schedule (OPENMP_SCHEDULE)
   for (int j = 1; j < M - 1; j++) {
     for (int i = 1; i < N - 1; i++) {
@@ -40,9 +122,14 @@ void jacobi(float* u_old, float* u_new, int N, int M, float h) {
         u_old[ (j - 1)*N + i ] +
         u_old[ (j + 1)*N + i ] 
       )/4;
+      erro += abs(u_new[ j*N + i ] - u_old[ j*N + i ]);
     }
   }
+
+  return erro / ( (N - 2) * (M - 2) );
+
 }
+
 
 void saveDataBin(float* u, int* N, int* M, float* h) {
 
@@ -89,14 +176,10 @@ int main(){
   //    u(0,y) = 0
   //    u(1,y) = 0
 
-  int N = 400;           // number of columns
+  int N = 400;          // number of columns
   int M = N;            // number of rows
   float h = 1.0/N;      // grid width
-
-  int cont = 0;
-  float* sum;
-  float total = 0;
-  float tol = 10;
+  int cont;             // iterations counter
 
   int size = N * M;     // size of vector
 
@@ -105,16 +188,12 @@ int main(){
 
   // OpenMP config
   int t = 1;
-
 #ifdef _OPENMP
   omp_set_num_threads(8);
   #pragma omp parallel
   t = omp_get_num_threads();
 #endif
-
   cout << "Threads: " << t << endl;
-
-  sum = new float[t];
 
   // setting grid values to 0 initially
   memset(u_old, 0.0, size * sizeof(float));
@@ -130,37 +209,7 @@ int main(){
   cout << "Executing jacobi...\n";
   auto inicio = chrono::high_resolution_clock::now();
 
-  // approximates the result until a tolerance is satisfied
-  for (cont = 0; tol > .000001; cont += 2) {
-
-    // reseting values
-    memset(sum, 0.0, t * sizeof(float));
-    total = 0;
-
-    // creating parallel region
-    #pragma omp parallel 
-    {
-      int id = omp_get_thread_num();
-    
-      // calculates the two next iterations
-      jacobi(u_old, u_new, N, M, h);
-      jacobi(u_new, u_old, N, M, h);
-
-      #pragma omp for collapse(1)
-      for (int j = 1; j < M - 1; j++) {
-        for (int i = 1; i < N - 1; i++) {
-          sum[id] += abs(u_new[j*N + i] - u_old[j*N + i]);
-        }
-      }
-    }
-
-    // calculates tolerance
-    for (int i = 0; i < t; i++ ){
-      total += sum[i];
-    }
-    tol = (total/((N - 2.0) * (M - 2.0)));
-
-  }
+  cont = jacobi(u_old, u_new, N, M, h, t);
 
   auto final = chrono::high_resolution_clock::now();
   chrono::duration<double> intervalo = final - inicio;
