@@ -23,6 +23,7 @@ float S(float x, float y){
  * @param M number of rows
  * @param h grid width
  * @param t number of threads
+ * @return number of iterations
  */
 int jacobi(float* u_old, float* u_new, int N, int M, float h, int t) {
 
@@ -93,40 +94,119 @@ int jacobi(float* u_old, float* u_new, int N, int M, float h, int t) {
 
 }
 
+void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
+
+  float h2 = h*h;
+
+  // first pass for i + j odd
+  #pragma omp for collapse(1) schedule (OPENMP_SCHEDULE)
+  for (int j = 1; j < M - 2; j += 2) {
+
+    for (int i = 2; i < N - 1; i += 2) {
+      
+      u_new[ j*N + i ] = 
+        (1 - w) * u_old[ j*N + i ] + (w * ( 
+        h2 * S (i*h, j*h) +
+        u_old[ j*N + (i - 1) ] +
+        u_old[ j*N + (i + 1) ] +
+        u_old[ (j - 1)*N + i ] +
+        u_old[ (j + 1)*N + i ] 
+      ))/4;
+      
+      u_new[ (j + 1)*N + (i - 1) ] = 
+        (1 - w) * u_old[ (j + 1)*N + (i - 1) ] + (w * ( 
+        h2 * S (i*h, j*h) +
+        u_old[ (j + 1)*N + (i - 2) ] +
+        u_old[ (j + 1)*N + (i    ) ] +
+        u_old[ (j    )*N + (i - 1) ] +
+        u_old[ (j + 2)*N + (i - 1) ] 
+      ))/4;
+
+    }
+
+  }
+
+  // second pass for i + j even
+  #pragma omp for collapse(1) schedule (OPENMP_SCHEDULE)
+  for (int j = 1; j < M - 2; j += 2) {
+
+    for (int i = 1; i < N - 2; i += 2) {
+      
+      u_new[ j*N + i ] = 
+        (1 - w) * u_old[ j*N + i ] + (w * ( 
+        h2 * S (i*h, j*h) +
+        u_new[ j*N + (i - 1) ] +
+        u_new[ j*N + (i + 1) ] +
+        u_new[ (j - 1)*N + i ] +
+        u_new[ (j + 1)*N + i ] 
+      ))/4;
+      
+      u_new[ (j + 1)*N + (i + 1) ] = 
+        (1 - w) * u_old[ (j + 1)*N + (i + 1) ] + (w * ( 
+        h2 * S (i*h, j*h) +
+        u_new[ (j + 1)*N + (i    ) ] +
+        u_new[ (j + 1)*N + (i + 2) ] +
+        u_new[ (j    )*N + (i + 1) ] +
+        u_new[ (j + 2)*N + (i + 1) ] 
+      ))/4;
+
+    }
+
+  }
+  
+}
+
 /**
- * @brief Calculates next iteration of the linear system by the SOR Back-Red method
+ * @brief Calculates next iteration of the linear system by the jacobi method
  * 
  * @param u_old current solution
  * @param u_next next iteration solution
  * @param N number of columns
  * @param M number of rows
  * @param h grid width
+ * @param t number of threads
  * @param w acceleration factor
- * @return the tolerance
+ * @return number of iterations
  */
-float SOR_BR(float* u_old, float* u_new, int N, int M, float h) {
+int SOR(float* u_old, float* u_new, int N, int M, float h, int t, float w) {
 
-  float h2 = h*h;
-  float erro = 0.0;
+  float * erro = new float[t];
+  int cont;
+  float tol = 1;
 
-  // calculate next approximation for the solution
+  // approximates the result until a tolerance is satisfied
+  for (cont = 0; tol > .000001; cont += 2) {
 
-  // iterate through all elements such that i + j is odd
-  #pragma omp for collapse(1) // schedule (OPENMP_SCHEDULE)
-  for (int j = 1; j < M - 1; j++) {
-    for (int i = 1; i < N - 1; i++) {
-      u_new[ j*N + i ] = ( 
-        h2 * S (i*h, j*h) +
-        u_old[ j*N + (i - 1) ] +
-        u_old[ j*N + (i + 1) ] +
-        u_old[ (j - 1)*N + i ] +
-        u_old[ (j + 1)*N + i ] 
-      )/4;
-      erro += abs(u_new[ j*N + i ] - u_old[ j*N + i ]);
+    // cout << cont << endl;
+    memset(erro, 0.0, t * sizeof(float));
+
+    // creating parallel region
+    #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+
+      SORaux(u_old, u_new, N, M, h, w);
+      SORaux(u_new, u_old, N, M, h, w);
+
+      // calculating the error separetly providaded a better performance
+      #pragma omp for collapse(1) schedule (OPENMP_SCHEDULE)
+      for (int j = 1; j < M - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
+          erro[id] += abs(u_new[ j*N + i ] - u_old[ j*N + i ]);
+        }
+      }
     }
+
+    // calculating the tolerance based on last two iterations
+    for (int i = 1; i < t; i++ ){
+      erro[0] += erro[i];
+    }
+    
+    tol = erro[0] / ( (N - 2) * (M - 2) );
+
   }
 
-  return erro / ( (N - 2) * (M - 2) );
+  return cont;
 
 }
 
@@ -146,11 +226,11 @@ void saveDataBin(float* u, int* N, int* M, float* h) {
 
 }
 
-void saveDataASCII(float* u, int N, int M, float h) {
+void saveDataASCII(string fileName, float* u, int N, int M, float h) {
 
   ofstream file;
 
-  file.open("output.dat");
+  file.open(fileName + ".dat");
 
   file << h << "\n";
   file << N << "\n";
@@ -195,7 +275,7 @@ int main(){
 #endif
   cout << "Threads: " << t << endl;
 
-  // setting grid values to 0 initially
+  // seting grid values to 0 initially
   memset(u_old, 0.0, size * sizeof(float));
   memset(u_new, 0.0, size * sizeof(float));
 
@@ -206,7 +286,7 @@ int main(){
   }
 
   // solving by the jacobi method (exercise 1)
-  cout << "Executing jacobi...\n";
+  cout << "Solving by jacobi...\n";
   auto inicio = chrono::high_resolution_clock::now();
 
   cont = jacobi(u_old, u_new, N, M, h, t);
@@ -220,11 +300,37 @@ int main(){
 
   // saving data for plotting
   cout << "Saving data...\n";
-  saveDataASCII(u_old, N, M, h);
+  saveDataASCII("jacobi", u_old, N, M, h);
   saveDataBin(u_old, &N, &M, &h);
   cout << "Data saved succesfully!\n";
 
-  // solving by the SOR red-black method (exercise 2)
+  // reseting values
+  memset(u_old, 0.0, size * sizeof(float));
+  memset(u_new, 0.0, size * sizeof(float));
+  for (int i = size - N; i < size; i++) {
+    u_old[i] = 1.0;
+    u_new[i] = 1.0;
+  }
+
+  // solving by the SOR black-red method (exercise 2)
+  cout << "\nSolving by SOR...\n";
+  inicio = chrono::high_resolution_clock::now();
+
+  float w = 1.5;
+  cont = SOR(u_old, u_new, N, M, h, t, w);
+
+  final = chrono::high_resolution_clock::now();
+  intervalo = final - inicio;
+
+  cout << "\nTime spent (SOR): " << intervalo.count() << "s\n";
+  cout << "Iterations: " << cont << "\n";
+  cout << "u(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n\n";
+
+  // saving data for plotting
+  cout << "Saving data...\n";
+  saveDataASCII("SOR", u_old, N, M, h);
+  saveDataBin(u_old, &N, &M, &h);
+  cout << "Data saved succesfully!\n";
 
   return 0;
 }
