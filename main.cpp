@@ -15,6 +15,16 @@ float S(float x, float y){
   return 10*(x*x + y*y + 5);
 }
 
+void initialValues(float * u_old, float * u_new, int N, int size) {
+  // reseting values
+  memset(u_old, 0.0, size * sizeof(float));
+  memset(u_new, 0.0, size * sizeof(float));
+  for (int i = size - N; i < size; i++) {
+    u_old[i] = 1.0;
+    u_new[i] = 1.0;
+  }
+}
+
 /**
  * @brief Calculates an aproximation of the solution of a linear system by the jacobi method
  * 
@@ -33,6 +43,9 @@ int jacobi(float tol, float* u_old, float* u_new, int N, int M, float h, int t) 
   float * erro = new float[t];
   int cont;
   float norm = 1.0f;
+
+  // setting initial value
+  initialValues(u_old, u_new, N, N*M);
 
   // approximates the result until a tolerance is satisfied
   for (cont = 0; norm > tol; cont += 2) {
@@ -177,6 +190,9 @@ int SOR(float tol, float* u_old, float* u_new, int N, int M, float h, int t, flo
   int cont;
   float norm = 1.0f;
 
+  // setting initial value
+  initialValues(u_old, u_new, N, N*M);
+
   // approximates the result until a tolerance is satisfied
   for (cont = 0; norm > tol; cont += 2) {
 
@@ -208,7 +224,7 @@ int SOR(float tol, float* u_old, float* u_new, int N, int M, float h, int t, flo
     norm = erro[0] / ( (N - 2) * (M - 2) );
 
   }
-
+  cout << setprecision(10) << norm << endl;
   return cont;
 
 }
@@ -259,13 +275,13 @@ int main(int argc, char const *argv[]){
   //    u(0,y) = 0
   //    u(1,y) = 0
 
+  // defining parameters of the problem
   int N = 400;                // number of columns
-  int M = N;                  // number of rows
+  int M = N;                  // number of rows is the same
   float h = 1.0/N;            // grid width
   float tol = atof(argv[1]);  // tolerance
   int cont;                   // iterations counter
-
-  int size = N * M;           // size of vector
+  int size = N * M;           // size of vectors
 
   // vector to store grid values
   float* u_old = new float[size];
@@ -279,20 +295,10 @@ int main(int argc, char const *argv[]){
   t = omp_get_num_threads();
 #endif
   cout << "Threads: " << t << endl;
+  cout << "Tolerance: " << setprecision(8) << tol << endl;
 
-  // seting grid values to 0 initially
-  memset(u_old, 0.0, size * sizeof(float));
-  memset(u_new, 0.0, size * sizeof(float));
+  // * solving by the jacobi method (exercise 1)
 
-  // boundary condition at u(x,1)
-  for (int i = size - N; i < size; i++) {
-    u_old[i] = 1.0;
-    u_new[i] = 1.0;
-  }
-
-  cout << "Tolerance: " << setprecision(10) << tol << endl;
-
-  // solving by the jacobi method (exercise 1)
   cout << "Solving by jacobi...\n";
   auto inicio = chrono::high_resolution_clock::now();
 
@@ -311,18 +317,11 @@ int main(int argc, char const *argv[]){
   saveDataBin(u_old, &N, &M, &h);
   cout << "Data saved succesfully!\n";
 
-  // reseting values
-  memset(u_old, 0.0, size * sizeof(float));
-  memset(u_new, 0.0, size * sizeof(float));
-  for (int i = size - N; i < size; i++) {
-    u_old[i] = 1.0;
-    u_new[i] = 1.0;
-  }
+  // * solving by the SOR black-red method (exercise 2)
+  // * SOR with w = 1.0
+  float w = 1.9;
 
-  // solving by the SOR black-red method (exercise 2)
-  float w = 1.;
-
-  cout << "\nSolving by SOR with w = " + to_string(w) + "...\n";
+  cout << "\nSolving by SOR with w = " << setprecision(4) << w << endl;
   inicio = chrono::high_resolution_clock::now();
 
   cont = SOR(tol, u_old, u_new, N, M, h, t, w);
@@ -337,8 +336,37 @@ int main(int argc, char const *argv[]){
   // saving data for plotting
   cout << "Saving data...\n";
   saveDataASCII("SOR", u_old, N, M, h);
-  saveDataBin(u_old, &N, &M, &h);
   cout << "Data saved succesfully!\n";
+
+  // * SOR with w = 1.95
+  w = 1.95;
+
+  cout << "\nSolving by SOR with w = " << setprecision(4) << w << endl;
+  inicio = chrono::high_resolution_clock::now();
+
+  cont = SOR(tol, u_old, u_new, N, M, h, t, w);
+
+  final = chrono::high_resolution_clock::now();
+  intervalo = final - inicio;
+
+  cout << "\nTime spent (SOR): " << intervalo.count() << "s\n";
+  cout << "Iterations: " << cont << "\n";
+  cout << "u(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n\n";
+
+  // * SOR with w = 1.99
+  w = 1.99;
+
+  cout << "\nSolving by SOR with w = " << setprecision(4) << w << endl;
+  inicio = chrono::high_resolution_clock::now();
+
+  cont = SOR(tol, u_old, u_new, N, M, h, t, w);
+
+  final = chrono::high_resolution_clock::now();
+  intervalo = final - inicio;
+
+  cout << "\nTime spent (SOR): " << intervalo.count() << "s\n";
+  cout << "Iterations: " << cont << "\n";
+  cout << "u(0.5, 0.5): " << u_old[ size/2 + N/2 ] << "\n\n";
 
   return 0;
 }
