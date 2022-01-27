@@ -11,7 +11,7 @@ using namespace std;
 
 // right side equation
 float S(float x, float y){
-  return -10*(x*x + y*y + 5);
+  return 10*(x*x + y*y + 5);
 }
 
 /**
@@ -30,7 +30,7 @@ int jacobi(float* u_old, float* u_new, int N, int M, float h, int t) {
   float h2 = h*h;
   float * erro = new float[t];
   int cont;
-  float tol = 1;
+  float tol = 1.95;
 
   // approximates the result until a tolerance is satisfied
   for (cont = 0; tol > .000001; cont += 2) {
@@ -105,22 +105,22 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
     for (int i = 2; i < N - 1; i += 2) {
       
       u_new[ j*N + i ] = 
-        (1 - w) * u_old[ j*N + i ] + (w * ( 
+        (1 - w) * u_old[ j*N + i ] + (w * .25 * ( 
         h2 * S (i*h, j*h) +
         u_old[ j*N + (i - 1) ] +
         u_old[ j*N + (i + 1) ] +
         u_old[ (j - 1)*N + i ] +
         u_old[ (j + 1)*N + i ] 
-      ))/4;
+      ));
       
       u_new[ (j + 1)*N + (i - 1) ] = 
-        (1 - w) * u_old[ (j + 1)*N + (i - 1) ] + (w * ( 
+        (1 - w) * u_old[ (j + 1)*N + (i - 1) ] + (w * .25 * ( 
         h2 * S (i*h, j*h) +
         u_old[ (j + 1)*N + (i - 2) ] +
         u_old[ (j + 1)*N + (i    ) ] +
         u_old[ (j    )*N + (i - 1) ] +
         u_old[ (j + 2)*N + (i - 1) ] 
-      ))/4;
+      ));
 
     }
 
@@ -133,22 +133,22 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
     for (int i = 1; i < N - 2; i += 2) {
       
       u_new[ j*N + i ] = 
-        (1 - w) * u_old[ j*N + i ] + (w * ( 
+        (1 - w) * u_old[ j*N + i ] + (w * .25 * ( 
         h2 * S (i*h, j*h) +
         u_new[ j*N + (i - 1) ] +
         u_new[ j*N + (i + 1) ] +
         u_new[ (j - 1)*N + i ] +
         u_new[ (j + 1)*N + i ] 
-      ))/4;
+      ));
       
       u_new[ (j + 1)*N + (i + 1) ] = 
-        (1 - w) * u_old[ (j + 1)*N + (i + 1) ] + (w * ( 
+        (1 - w) * u_old[ (j + 1)*N + (i + 1) ] + (w * .25 * ( 
         h2 * S (i*h, j*h) +
         u_new[ (j + 1)*N + (i    ) ] +
         u_new[ (j + 1)*N + (i + 2) ] +
         u_new[ (j    )*N + (i + 1) ] +
         u_new[ (j + 2)*N + (i + 1) ] 
-      ))/4;
+      ));
 
     }
 
@@ -313,10 +313,11 @@ int main(){
   }
 
   // solving by the SOR black-red method (exercise 2)
-  cout << "\nSolving by SOR...\n";
+  float w = 1.;
+
+  cout << "\nSolving by SOR with w = " + to_string(w) + "...\n";
   inicio = chrono::high_resolution_clock::now();
 
-  float w = 1.5;
   cont = SOR(u_old, u_new, N, M, h, t, w);
 
   final = chrono::high_resolution_clock::now();
