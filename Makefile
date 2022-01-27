@@ -10,4 +10,4 @@ main.o: main.cpp
 	@$(CC) $(CFLAGS) -c main.cpp
 
 clean::
-	@rm *.o *.bin *.dat
+	@rm main *.o *.bin *.dat

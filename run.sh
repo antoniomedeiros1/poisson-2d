@@ -1,3 +1,3 @@
 make clean
 make
-./main
+./main 0.0000001

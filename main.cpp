@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <chrono>
 #include <iostream>
+#include <iomanip>
 #include <cstring>
 #include <fstream>
 #include "omp.h"
@@ -15,8 +16,9 @@ float S(float x, float y){
 }
 
 /**
- * @brief Calculates next iteration of the linear system by the jacobi method
+ * @brief Calculates an aproximation of the solution of a linear system by the jacobi method
  * 
+ * @param tol tolerance for the aproximation
  * @param u_old current solution
  * @param u_next next iteration solution
  * @param N number of columns
@@ -25,15 +27,15 @@ float S(float x, float y){
  * @param t number of threads
  * @return number of iterations
  */
-int jacobi(float* u_old, float* u_new, int N, int M, float h, int t) {
+int jacobi(float tol, float* u_old, float* u_new, int N, int M, float h, int t) {
 
   float h2 = h*h;
   float * erro = new float[t];
   int cont;
-  float tol = 1.95;
+  float norm = 1.0f;
 
   // approximates the result until a tolerance is satisfied
-  for (cont = 0; tol > .000001; cont += 2) {
+  for (cont = 0; norm > tol; cont += 2) {
 
     // cout << cont << endl;
     memset(erro, 0.0, t * sizeof(float));
@@ -86,7 +88,7 @@ int jacobi(float* u_old, float* u_new, int N, int M, float h, int t) {
       erro[0] += erro[i];
     }
     
-    tol = erro[0] / ( (N - 2) * (M - 2) );
+    norm = erro[0] / ( (N - 2) * (M - 2) );
 
   }
 
@@ -157,8 +159,9 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
 }
 
 /**
- * @brief Calculates next iteration of the linear system by the jacobi method
+ * @brief Calculates an aproximation of the solution of a linear system by the SOR Black-Red method
  * 
+ * @param tol tolerance for the aproximation
  * @param u_old current solution
  * @param u_next next iteration solution
  * @param N number of columns
@@ -168,14 +171,14 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
  * @param w acceleration factor
  * @return number of iterations
  */
-int SOR(float* u_old, float* u_new, int N, int M, float h, int t, float w) {
+int SOR(float tol, float* u_old, float* u_new, int N, int M, float h, int t, float w) {
 
   float * erro = new float[t];
   int cont;
-  float tol = 1;
+  float norm = 1.0f;
 
   // approximates the result until a tolerance is satisfied
-  for (cont = 0; tol > .000001; cont += 2) {
+  for (cont = 0; norm > tol; cont += 2) {
 
     // cout << cont << endl;
     memset(erro, 0.0, t * sizeof(float));
@@ -202,7 +205,7 @@ int SOR(float* u_old, float* u_new, int N, int M, float h, int t, float w) {
       erro[0] += erro[i];
     }
     
-    tol = erro[0] / ( (N - 2) * (M - 2) );
+    norm = erro[0] / ( (N - 2) * (M - 2) );
 
   }
 
@@ -245,7 +248,7 @@ void saveDataASCII(string fileName, float* u, int N, int M, float h) {
 
 }
 
-int main(){
+int main(int argc, char const *argv[]){
   
   // Domain:
   //    [0,1] x [0,1]
@@ -256,20 +259,22 @@ int main(){
   //    u(0,y) = 0
   //    u(1,y) = 0
 
-  int N = 400;          // number of columns
-  int M = N;            // number of rows
-  float h = 1.0/N;      // grid width
-  int cont;             // iterations counter
+  int N = 400;                // number of columns
+  int M = N;                  // number of rows
+  float h = 1.0/N;            // grid width
+  float tol = atof(argv[1]);  // tolerance
+  int cont;                   // iterations counter
 
-  int size = N * M;     // size of vector
+  int size = N * M;           // size of vector
 
+  // vector to store grid values
   float* u_old = new float[size];
   float* u_new = new float[size];
 
   // OpenMP config
   int t = 1;
 #ifdef _OPENMP
-  omp_set_num_threads(8);
+  // omp_set_num_threads(1);
   #pragma omp parallel
   t = omp_get_num_threads();
 #endif
@@ -285,11 +290,13 @@ int main(){
     u_new[i] = 1.0;
   }
 
+  cout << "Tolerance: " << setprecision(10) << tol << endl;
+
   // solving by the jacobi method (exercise 1)
   cout << "Solving by jacobi...\n";
   auto inicio = chrono::high_resolution_clock::now();
 
-  cont = jacobi(u_old, u_new, N, M, h, t);
+  cont = jacobi(tol, u_old, u_new, N, M, h, t);
 
   auto final = chrono::high_resolution_clock::now();
   chrono::duration<double> intervalo = final - inicio;
@@ -318,7 +325,7 @@ int main(){
   cout << "\nSolving by SOR with w = " + to_string(w) + "...\n";
   inicio = chrono::high_resolution_clock::now();
 
-  cont = SOR(u_old, u_new, N, M, h, t, w);
+  cont = SOR(tol, u_old, u_new, N, M, h, t, w);
 
   final = chrono::high_resolution_clock::now();
   intervalo = final - inicio;
