@@ -1,3 +1,6 @@
+make clean
+make
+
 export OMP_NUM_THREADS=1
 ./main 0.0000001
 

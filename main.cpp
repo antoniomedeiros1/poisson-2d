@@ -16,13 +16,14 @@ float S(float x, float y){
 }
 
 void initialValues(float * u_old, float * u_new, int N, int size) {
-  // reseting values
+  
   memset(u_old, 0.0, size * sizeof(float));
   memset(u_new, 0.0, size * sizeof(float));
   for (int i = size - N; i < size; i++) {
     u_old[i] = 1.0;
     u_new[i] = 1.0;
   }
+
 }
 
 /**
@@ -94,6 +95,7 @@ int jacobi(float tol, float* u_old, float* u_new, int N, int M, float h, int t) 
           erro[id] += abs(u_new[ j*N + i ] - u_old[ j*N + i ]);
         }
       }
+      
     }
 
     // calculating the tolerance based on last two iterations
@@ -120,7 +122,7 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
     for (int i = 2; i < N - 1; i += 2) {
       
       u_new[ j*N + i ] = 
-        (1 - w) * u_old[ j*N + i ] + (w * .25 * ( 
+        (1 - w) * u_old[ j*N + i ] + (0.25 * w * ( 
         h2 * S (i*h, j*h) +
         u_old[ j*N + (i - 1) ] +
         u_old[ j*N + (i + 1) ] +
@@ -129,7 +131,7 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
       ));
       
       u_new[ (j + 1)*N + (i - 1) ] = 
-        (1 - w) * u_old[ (j + 1)*N + (i - 1) ] + (w * .25 * ( 
+        (1 - w) * u_old[ (j + 1)*N + (i - 1) ] + (0.25 * w * ( 
         h2 * S (i*h, j*h) +
         u_old[ (j + 1)*N + (i - 2) ] +
         u_old[ (j + 1)*N + (i    ) ] +
@@ -148,7 +150,7 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
     for (int i = 1; i < N - 2; i += 2) {
       
       u_new[ j*N + i ] = 
-        (1 - w) * u_old[ j*N + i ] + (w * .25 * ( 
+        (1 - w) * u_old[ j*N + i ] + (0.25 * w * ( 
         h2 * S (i*h, j*h) +
         u_new[ j*N + (i - 1) ] +
         u_new[ j*N + (i + 1) ] +
@@ -157,7 +159,7 @@ void SORaux(float* u_old, float* u_new, int N, int M, float h, float w) {
       ));
       
       u_new[ (j + 1)*N + (i + 1) ] = 
-        (1 - w) * u_old[ (j + 1)*N + (i + 1) ] + (w * .25 * ( 
+        (1 - w) * u_old[ (j + 1)*N + (i + 1) ] + (0.25 * w * ( 
         h2 * S (i*h, j*h) +
         u_new[ (j + 1)*N + (i    ) ] +
         u_new[ (j + 1)*N + (i + 2) ] +
@@ -194,7 +196,7 @@ int SOR(float tol, float* u_old, float* u_new, int N, int M, float h, int t, flo
   initialValues(u_old, u_new, N, N*M);
 
   // approximates the result until a tolerance is satisfied
-  for (cont = 0; norm > tol; cont += 2) {
+  for (cont = 0; norm > tol && cont < 100000; cont += 2) {
 
     // cout << cont << endl;
     memset(erro, 0.0, t * sizeof(float));
@@ -216,15 +218,18 @@ int SOR(float tol, float* u_old, float* u_new, int N, int M, float h, int t, flo
       }
     }
 
+    // cout << "u(0.5, 0.5): " << setprecision(10) << u_old[ N*M/2 + N/2 ] << "\n";
+
     // calculating the tolerance based on last two iterations
     for (int i = 1; i < t; i++ ){
       erro[0] += erro[i];
     }
     
     norm = erro[0] / ( (N - 2) * (M - 2) );
+    // cout << cont << " " << norm << boolalpha << (norm <= tol) << "\n";
 
   }
-  cout << setprecision(10) << norm << endl;
+  // cout << setprecision(10) << norm << endl;
   return cont;
 
 }
@@ -276,7 +281,7 @@ int main(int argc, char const *argv[]){
   //    u(1,y) = 0
 
   // defining parameters of the problem
-  int N = 400;                // number of columns
+  int N = 200;                // number of columns
   int M = N;                  // number of rows is the same
   float h = 1.0/N;            // grid width
   float tol = atof(argv[1]);  // tolerance
@@ -319,7 +324,7 @@ int main(int argc, char const *argv[]){
 
   // * solving by the SOR black-red method (exercise 2)
   // * SOR with w = 1.0
-  float w = 1.9;
+  float w = 1.0;
 
   cout << "\nSolving by SOR with w = " << setprecision(4) << w << endl;
   inicio = chrono::high_resolution_clock::now();
